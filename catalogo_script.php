@@ -40,6 +40,10 @@ $formatos_mime = array(
     ".pdf" => "application/pdf",
     ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 );
+$formatos_label = array(
+    ".pdf" => "PDF",
+    ".xlsx" => "XLSX" 
+);
 
 # Filtramos por formato, de este modo descartamos las entradas de la tabla que hacen referencia a páginas .html.
 foreach($worksheet_array as $key=>$value){
@@ -135,10 +139,12 @@ foreach($worksheet_array as $row){
 
     $issuedValue = $row['FECHA CREACIÓN'];
     $issued = $dom->createElement('dct:issued', SharedDate::excelToDateTimeObject($issuedValue)->format('c'));
+    $issued->setAttribute('rdf:datatype','http://www.w3.org/2001/XMLSchema#dateTime');
     $Dataset->appendChild($issued);
 
     $modifiedValue = $row['FECHA MODIFICACIÓN'];
     $modified = $dom->createElement('dct:modified', SharedDate::excelToDateTimeObject($modifiedValue)->format('c'));
+    $modified->setAttribute('rdf:datatype','http://www.w3.org/2001/XMLSchema#dateTime');
     $Dataset->appendChild($modified);
 
     $size = $dom->createElement('dcat:byteSize', $row['TAMAÑO']);
@@ -148,7 +154,16 @@ foreach($worksheet_array as $row){
     $accessURL = $dom->createElement('dcat:accessURL', $row['URL']);
     $Distribution->appendChild($accessURL);
 
-    $mediaType = $dom->createElement('dcat:mediaType', $formatos_mime[$format]);
+    $mediaType = $dom->createElement('dct:format');
+    $imt = $mediaType->appendChild(
+        $dom->createElement('dct:IMT')
+    );
+    $imt->appendChild(
+        $dom->createElement('rdf:value', $formatos_mime[$format])
+    );
+    $imt->appendChild(
+        $dom->createElement('rdfs:label', $formatos_label[$format])
+    );
     $Distribution->appendChild($mediaType);
 
 
@@ -176,25 +191,19 @@ function getTitle($url, $idioma){
         $reader = IOFactory::createReader('Xlsx');
         $reader->setReadDataOnly(true);
         $spreadsheet = $reader->load('temp_file.xlsx');
-        
-        # Se carga la hoja del .xlsx asociada al idioma.
-        if($idioma=='Castellano'){
-            $worksheet = $spreadsheet->getSheetByName('cas');
-            if (is_null($worksheet)){
-                $worksheet = $spreadsheet->getSheetByName(strtoupper('CAS'));
-                if(is_null($worksheet)){
-                    $worksheet = $spreadsheet->getSheetByName($idioma);
-                }
-            } 
-        }
 
-        if($idioma=='Valenciano'){
-            $worksheet = $spreadsheet->getSheetByName('val');
-            if (is_null($worksheet)){
-                $worksheet = $spreadsheet->getSheetByName(strtoupper('VAL'));
-                if(is_null($worksheet)){
-                    $worksheet = $spreadsheet->getSheetByName($idioma);
-                } 
+        # Se carga la hoja del .xlsx asociada al idioma.
+        # El nombre de las hojas no es consistente, se consideran todas las variaciones.
+        $sheet_keys = array(
+            "Castellano" => array('cas', 'formatos', 'formato cas', 'castellano', 'distribucion espacios cas', 'formatos'),
+            "Valenciano" => array('val', 'formatos (val)', 'formato val', 'valenciano', 'distribucion espacios val', 'formats valencià') 
+        );
+
+        $sheet_names = $spreadsheet->getSheetNames();
+        $worksheet = NULL;
+        foreach($sheet_names as $name){
+            if(in_array(strtolower(trim($name)),$sheet_keys[$idioma])){
+                $worksheet = $spreadsheet->getSheetByName($name);
             }
         }
 
@@ -203,19 +212,20 @@ function getTitle($url, $idioma){
             $rows = $worksheet->toArray();
             $nonEmptyRows = array_filter($rows, 'checkRow');
             $nonEmptyRows = array_values($nonEmptyRows);
-
+            
+            # Se consideran las tres primeras filas no nulas.
             $title = $nonEmptyRows[0][0];
             for ($i=1;$i<3;$i++){
                 $title .= ". " . $nonEmptyRows[$i][0];
             }
         } else{
-            $title = '';
+            $title = 'No title';
         }
         $spreadsheet->disconnectWorksheets();
         unset($spreadsheet);
         return $title;
     } catch (TypeError $e){
-        return '';
+        return 'No title (error)';
     }
     
 
