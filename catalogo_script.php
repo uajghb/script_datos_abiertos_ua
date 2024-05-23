@@ -35,7 +35,7 @@ $root = $dom->documentElement;
 $catalog=$root->getElementsByTagName('*')[0];
 
 # Definición de variables auxiliares. 
-$formatos = array('.pdf','.xlsx');
+$formatos = array('.xlsx');
 $formatos_mime = array(
     ".pdf" => "application/pdf",
     ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -44,6 +44,17 @@ $formatos_label = array(
     ".pdf" => "PDF",
     ".xlsx" => "XLSX" 
 );
+
+# Construimos un diccionario que recoge para cada .html las claves de la página y el nombre de la página contenedora. 
+# Esto se empleará posteriormente para extraer el metadato keywords. 
+$keywords_dict = array();
+foreach($worksheet_array as $key=>$value){
+    if ($value['EXTENSIÓN']=='.html'){
+        $keywords_dict[$value['TÍTULO FICHERO']] = array(
+            "pagina_contenedora" => $value['PÁGINA CONTENEDORA DEL ENLACE'],
+            "claves_pagina" => $value['CLAVES PÁGINA']);
+    }
+}
 
 # Filtramos por formato, de este modo descartamos las entradas de la tabla que hacen referencia a páginas .html.
 foreach($worksheet_array as $key=>$value){
@@ -76,50 +87,31 @@ foreach($worksheet_array as $row){
     $distribution = $dom->createElement('dcat:distribution');
     $Distribution = $dom->createElement('dcat:Distribution');
 
-    if ($format == '.xlsx'){
-        $title_cas_value = getTitle($row['URL'], 'Castellano');
-        $title_val_value = getTitle($row['URL'], 'Valenciano');
-        $title_cas = $dom->createElement('dct:title', $title_cas_value);
-        $title_val = $dom->createElement('dct:title', $title_val_value);
-        $title_cas->setAttribute('xml:lang','es');
-        $title_val->setAttribute('xml:lang','ca');
-        $Dataset->appendChild($title_cas);
-        $Dataset->appendChild($title_val);
-        $Distribution->appendChild($title_cas->cloneNode(True));
-        $Distribution->appendChild($title_val->cloneNode(True));
+    $title_cas_value = getTitle($row['URL'], 'Castellano');
+    $title_val_value = getTitle($row['URL'], 'Valenciano');
+    $title_cas = $dom->createElement('dct:title', $title_cas_value);
+    $title_val = $dom->createElement('dct:title', $title_val_value);
+    $title_cas->setAttribute('xml:lang','es');
+    $title_val->setAttribute('xml:lang','ca');
+    $Dataset->appendChild($title_cas);
+    $Dataset->appendChild($title_val);
+    $Distribution->appendChild($title_cas->cloneNode(True));
+    $Distribution->appendChild($title_val->cloneNode(True));
 
-        $description_cas = $dom->createElement('dct:description', $title_cas_value);
-        $description_val = $dom->createElement('dct:description', $title_val_value);
-        $description_cas->setAttribute('xml:lang','es');
-        $description_val->setAttribute('xml:lang','ca');
-        $Dataset->appendChild($description_cas);
-        $Dataset->appendChild($description_val);
+    $description_cas = $dom->createElement('dct:description', $title_cas_value);
+    $description_val = $dom->createElement('dct:description', $title_val_value);
+    $description_cas->setAttribute('xml:lang','es');
+    $description_val->setAttribute('xml:lang','ca');
+    $Dataset->appendChild($description_cas);
+    $Dataset->appendChild($description_val);
 
-        $language_es = $dom->createElement('dct:language','es');
-        $language_ca = $dom->createElement('dct:language','ca');
-        $Dataset->appendChild($language_es);
-        $Dataset->appendChild($language_ca);
+    $language_es = $dom->createElement('dct:language','es');
+    $language_ca = $dom->createElement('dct:language','ca');
+    $Dataset->appendChild($language_es);
+    $Dataset->appendChild($language_ca);
 
-
-    } else{
-        $title_value = $row['PÁGINA CONTENEDORA DEL ENLACE'];
-        $title_value = $title_value . '. Año ' . explode('/', $row['URL'])[6];
-        $title = $dom->createElement('dct:title', $title_value);
-        $title->setAttribute('xml:lang','es');
-        $Dataset->appendChild($title);
-        $Distribution->appendChild($title->cloneNode(True));
-
-        $description = $dom->createElement('dct:description', $title_value);
-        $description->setAttribute('xml:lang','es');
-        $Dataset->appendChild($description);
-
-        $language_es = $dom->createElement('dct:language','es');
-        $Dataset->appendChild($language_es);
-
-    } 
-
-    $theme = $dom->createElement('dcat:theme');
-    $theme->setAttribute('rdf:resource', 'http://datos.gob.es/kos/sector-publico/sector/educacion');
+    $theme = $dom->createElement('dcat:theme', 'educacion');
+    // $theme->setAttribute('rdf:resource', 'http://datos.gob.es/kos/sector-publico/sector/educacion');
     $Dataset->appendChild($theme);
 
     $publisher = $dom->createElement('dct:publisher');
@@ -127,7 +119,7 @@ foreach($worksheet_array as $row){
     $Dataset->appendChild($publisher);
 
     $license = $dom->createElement('dct:license');
-    $license->setAttribute('rdf:resource','https://si.ua.es/es/web-institucional-ua/normativa/copyright.html');
+    $license->setAttribute('rdf:resource','https://opendefinition.org/licenses/cc-by/');
     $Dataset->appendChild($license);
 
     $spatial_comunidad = $dom->createElement('dct:spatial');
@@ -146,6 +138,13 @@ foreach($worksheet_array as $row){
     $modified = $dom->createElement('dct:modified', SharedDate::excelToDateTimeObject($modifiedValue)->format('c'));
     $modified->setAttribute('rdf:datatype','http://www.w3.org/2001/XMLSchema#dateTime');
     $Dataset->appendChild($modified);
+
+    $keywords_array = getKeywords($row['PÁGINA CONTENEDORA DEL ENLACE'], $keywords_dict);
+    foreach($keywords_array as $keyword){
+        $Dataset->appendChild(
+            $dom->createElement('dcat:keyword', strtolower(trim($keyword)))
+        );
+    }
 
     $size = $dom->createElement('dcat:byteSize', $row['TAMAÑO']);
     $size->setAttribute('rdf:datatype', "http://www.w3.org/2001/XMLSchema#decimal");
@@ -239,6 +238,17 @@ function checkRow($row){
         }
     }
     return false;
+}
+
+# Función auxiliar para extraer el metadato keywords. Para cada recurso, se consideran como keywords las claves 
+# de la página contenedora y las de la página contenedora anterior.
+function getKeywords($clave, $keywords_dict){
+    $claves_pagina = $keywords_dict[$clave]['claves_pagina'];
+    $pagina_contenedora = $keywords_dict[$clave]['pagina_contenedora'];
+    $keywords_a = explode(",", $claves_pagina);
+    $keywords_b = explode(",", $keywords_dict[$pagina_contenedora]['claves_pagina']);
+    $keywords = array_merge($keywords_a, $keywords_b);
+    return array_unique($keywords);
 }
 
 $elapsed = time()-$start;

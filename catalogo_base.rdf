@@ -20,6 +20,6 @@
 		<dct:language>es</dct:language>
 		<dct:language>ca</dct:language>
 		<foaf:homepage rdf:resource="https://utc.ua.es/es/datos/la-ua-en-cifras.html"/>
-		<dct:license rdf:resource="https://si.ua.es/es/web-institucional-ua/normativa/copyright.html"/>
+		<dct:license rdf:resource="https://opendefinition.org/licenses/cc-by/"/>
 	</dcat:Catalog>
 </rdf:RDF>
