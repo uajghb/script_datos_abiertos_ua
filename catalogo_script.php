@@ -223,7 +223,7 @@ function getTitle($url, $idioma){
         $spreadsheet->disconnectWorksheets();
         unset($spreadsheet);
         return $title;
-    } catch (TypeError $e){
+    } catch (Exception $e){
         return 'No title (error)';
     }
     
